@@ -1,0 +1,40 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import ShuffleSplit
+from sklearn.neighbors import KNeighborsClassifier
+from mlxtend.feature_selection import SequentialFeatureSelector as SFS
+from sklearn.feature_selection import SequentialFeatureSelector
+from sklearn.tree import DecisionTreeClassifier
+from collections import Counter
+
+features = pd.read_excel(r'D:\rawdata_preprocess\数据处理全过程\步骤4：分类器\PSD_std+12featurebase_std\PSDstd+12featurebaseStd.xls',header = None , index_col = None)
+#import data without stages
+data = features.loc[1:8657,1:60]
+# Get the label
+target = features.loc[1:8657,:0]
+result_list = []
+rs = ShuffleSplit(n_splits=10, test_size=0.2, train_size=0.5, random_state=0)
+for train_index, test_index in rs.split(data):
+    other_index = np.delete(range(data.shape[0]), np.append(train_index, test_index))
+    X_other = data
+    y_other = target
+    y_other = np.array(y_other)
+    y_other= y_other.T.reshape(-1)
+    y_other = y_other.astype('int')
+    for seed in range(21):
+        sffs = SFS(DecisionTreeClassifier(random_state=seed),
+                   k_features="best",
+                   forward=True,
+                   floating=True,
+                   scoring='accuracy',
+                   cv=10,
+                   n_jobs=-1)
+        sffs.fit(X_other,y_other)
+        result_list.extend(list(sffs.k_feature_names_))
+counter = Counter(result_list)
+y = []
+for k,v in counter.items():
+    per = v / 200 * 100
+    y.append(per)
+    print('feature=%s, n=%d (%.3f%%)' % (k, v, per))
+sffs.subsets_
