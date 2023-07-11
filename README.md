@@ -14,6 +14,6 @@ Thank you!
 -------------------------------------
 **SFFS performance!**
 ![image](https://github.com/shuaijibadegithab/MWL-detection-system/assets/103566892/7962eeb9-1092-4e2e-a476-e4d45e35cad8)
--------------------------------------
-**A possible application framework!**
+-------------------------------------**
+**A possible application framework!******
 ![image](https://github.com/shuaijibadegithab/MWL-detection-system/assets/103566892/4cfcf798-8869-4d5f-851e-1b3eedf50b85)
