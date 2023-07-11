@@ -1,40 +1,78 @@
 import numpy as np
+from sklearn import datasets
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F  
 import pandas as pd
-from sklearn.model_selection import ShuffleSplit
-from sklearn.neighbors import KNeighborsClassifier
-from mlxtend.feature_selection import SequentialFeatureSelector as SFS
-from sklearn.feature_selection import SequentialFeatureSelector
-from sklearn.tree import DecisionTreeClassifier
-from collections import Counter
+import torchbnn as bnn
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report
+%matplotlib inline
 
-features = pd.read_excel(r'D:\rawdata_preprocess\数据处理全过程\步骤4：分类器\PSD_std+12featurebase_std\PSDstd+12featurebaseStd.xls',header = None , index_col = None)
-#import data without stages
-data = features.loc[1:8657,1:60]
-# Get the label
-target = features.loc[1:8657,:0]
-result_list = []
-rs = ShuffleSplit(n_splits=10, test_size=0.2, train_size=0.5, random_state=0)
-for train_index, test_index in rs.split(data):
-    other_index = np.delete(range(data.shape[0]), np.append(train_index, test_index))
-    X_other = data
-    y_other = target
-    y_other = np.array(y_other)
-    y_other= y_other.T.reshape(-1)
-    y_other = y_other.astype('int')
-    for seed in range(21):
-        sffs = SFS(DecisionTreeClassifier(random_state=seed),
-                   k_features="best",
-                   forward=True,
-                   floating=True,
-                   scoring='accuracy',
-                   cv=10,
-                   n_jobs=-1)
-        sffs.fit(X_other,y_other)
-        result_list.extend(list(sffs.k_feature_names_))
-counter = Counter(result_list)
-y = []
-for k,v in counter.items():
-    per = v / 200 * 100
-    y.append(per)
-    print('feature=%s, n=%d (%.3f%%)' % (k, v, per))
-sffs.subsets_
+# 检查是否有可用的GPU
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
+# 导入数据并将其放到GPU上
+features = pd.read_excel(r'PSDstd+12featurebaseStd.xls',header = None , index_col = None)
+data = features.loc[1:8658,1:90]
+target = features.loc[1:8658,:0]
+X = data.astype('float32')
+Y = target.astype('int64')
+x, y = torch.from_numpy(X.values).to(device), torch.from_numpy(Y.values.flatten()).to(device)
+print("Input data shape:", x.shape)
+print("Target data shape:", y.shape)
+
+# 定义模型并将其放到GPU上
+model = nn.Sequential(
+    bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=90, out_features=100),
+    nn.ReLU(),
+    bnn.BayesLinear(prior_mu=0, prior_sigma=0.1, in_features=100, out_features=3),
+).to(device)
+ce_loss = nn.CrossEntropyLoss()
+kl_loss = bnn.BKLLoss(reduction='mean', last_layer_only=False)
+kl_weight = 0.01
+optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+# 训练模型
+kl_weight = 0.05
+train_acc_list, test_acc_list = [], []
+for epoch in range(10000):
+    model.train()
+    optimizer.zero_grad()
+    pre = model(x)
+    ce = ce_loss(pre, y)
+    kl = kl_loss(model)
+    cost = ce + kl_weight*kl
+    cost.backward()
+    optimizer.step()
+    
+    _, predicted = torch.max(pre.data, 1)
+    train_acc = (predicted == y).sum().item() / y.size(0)
+    train_acc_list.append(train_acc)
+    
+    model.eval()
+    with torch.no_grad():
+        test_pre = model(x)
+        _, test_predicted = torch.max(test_pre.data, 1)
+        test_acc = (test_predicted == y).sum().item() / y.size(0)
+        test_acc_list.append(test_acc)
+    
+    if epoch % 10000 == 0:
+        print('Epoch [{}/{}], Train Accuracy: {:.2f}%, Test Accuracy: {:.2f}%'
+              .format(epoch, 10000, train_acc * 100, test_acc * 100))
+
+# 输出最终准确度
+model.eval()
+with torch.no_grad():
+    pre = model(x)
+    _, predicted = torch.max(pre.data, 1)
+    total = y.size(0)
+    correct = (predicted == y).sum().item()
+print('Final Accuracy: {:.2f}%'.format(correct / total * 100))
+model.eval()
+with torch.no_grad():
+    pre = model(x)
+    _, predicted = torch.max(pre.data, 1)
+    print(classification_report(y.cpu(), predicted.cpu()))
