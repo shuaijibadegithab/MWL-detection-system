@@ -1,0 +1,335 @@
+import os
+import random
+import pandas as pd
+import numpy as np
+import xlrd
+# ROC曲线和AUC面积所需
+import matplotlib as mpl
+from sklearn.linear_model import LogisticRegressionCV
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn import metrics
+from sklearn.preprocessing import label_binarize
+from sklearn import preprocessing
+from sklearn.svm import SVC
+import matplotlib.pyplot as plt
+# 使用交叉验证的方法，将数据集分为训练集与测试集
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import cross_val_score
+# 求准确率、精确率、召回率、F1值、Cohen’s Kappa系数
+from sklearn.metrics import accuracy_score, precision_score, \
+    recall_score, f1_score, cohen_kappa_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+import warnings
+import xlwt
+warnings.filterwarnings("ignore")
+
+# 加载数据集的函数
+def excel2path(path):
+    data = xlrd.open_workbook(path)
+    table = data.sheets()[0] # sheet表
+    nrows = table.nrows  # 行数
+    ncols = table.ncols  # 列数
+    datamat = np.zeros((nrows, ncols), dtype=object)  # dtype设为object，因为excel中有string变量
+    for i in range(nrows):  # 按行读取excel表的数据给datamat（array数组）
+        rows = table.row_values(i)
+        datamat[i, :] = rows
+    return datamat
+# 创建array数组存储模型结果
+result_forest_arr = np.array([['准确率', '精确率', '召回率', 'F1', 'CK系数']])
+result_knn_arr = np.array([['准确率', '精确率', '召回率', 'F1', 'CK系数']])
+result_svm_linear_arr = np.array([['准确率', '精确率', '召回率', 'F1', 'CK系数']])
+result_svm_rbf_arr = np.array([['准确率', '精确率', '召回率', 'F1', 'CK系数']])
+
+# 运行次数控制
+for w in range(0,10):
+    # 当前文件夹
+    pathY = r'D:\rawdata_preprocess\数据处理全过程\步骤3：特征值筛选\3Phases_12features.xls'
+    receive_array = excel2path(pathY)[1:, :]
+    print(receive_array)
+
+
+    # 打乱引入array数组的顺序
+    random.shuffle(receive_array)
+    x = receive_array[1:, 1:]  # 返回索引为1的行及其以后的数据，即第二行及其以后的数据
+    y = receive_array[1:, 0]
+    X = x.astype(np.float64)
+    Y = y.astype(np.float64)
+    X = preprocessing.scale(X)
+        # 将数据集拆分为训练集和测试集
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.3)
+            # 选择最优参数
+    svm_linear_para = {'C': [0.01,0.1,1,10]}#最优C = 20，准确率：0.65
+    SVM_linear = SVC(decision_function_shape='ovo', kernel='linear',
+                     shrinking=True, probability=False, gamma='auto')
+    #clf1 = GridSearchCV(SVM_linear, svm_linear_para, cv=5)#进行穷举搜索，
+    clf1 = RandomizedSearchCV(SVM_linear, svm_linear_para, cv=5,n_jobs = -1)#进行随机搜索
+    clf1.fit(X_train, Y_train)
+    C_linear = clf1.best_params_["C"]  # 最优的线性C值
+    print(f'评估最合适SVM的C_linear值为：{clf1.best_params_["C"]}', "其准确率为：%.2f" % clf1.best_score_)
+
+    svm_rbf_para = {'C': [0.01,0.1,1,10]}
+    SVM_rbf = SVC(decision_function_shape='ovo', kernel='rbf',
+                  shrinking=True, probability=False, gamma='auto')
+    #clf2 = GridSearchCV(SVM_rbf, svm_rbf_para, cv=5)
+    clf2 = RandomizedSearchCV(SVM_rbf, svm_rbf_para, cv=5,n_jobs = -1)
+    clf2.fit(X_train, Y_train)
+    C_rbf = clf2.best_params_["C"]  # 最优的高斯C值
+    print(f'评估最合适SVM的惩罚系数C_rbf值为：{clf2.best_params_["C"]}', "其准确率为：%.2f" % clf2.best_score_)#op C_rbf = 1 accuracy = 0.65
+
+    knn_para = {'n_neighbors': [1, 2, 3, 4, 5]}
+    KNN_ = KNeighborsClassifier(n_neighbors=5,n_jobs=-1)
+    #clf3 = GridSearchCV(KNN_, knn_para, cv=5)
+    clf3 = RandomizedSearchCV(KNN_,knn_para,cv = 5, n_jobs=-1)
+    clf3.fit(X_train, Y_train)
+    n_knn = [clf3.best_params_["n_neighbors"]]  # 最优的k值
+    print(f'评估最合适KNN的K值为：{clf3.best_params_["n_neighbors"]}', "其准确率为：%.2f" % clf3.best_score_)#op K = 1 accuracy = 0.77
+
+    Forest_para = {'n_estimators': [10, 50, 100, 200, 500]}
+    Forest_ = RandomForestClassifier(random_state=0, n_jobs=-1)
+    #clf4 = GridSearchCV(Forest_, Forest_para, cv=5)
+    clf4 = RandomizedSearchCV(Forest_,Forest_para,cv = 5, n_jobs=-1)
+    clf4.fit(X_train, Y_train)
+    n_forest = [clf4.best_params_["n_estimators"]]  # 最优的森林值
+    print(f'评估最合适随机森林的决策树值为：{clf4.best_params_["n_estimators"]}', "其准确率为：%.2f" % clf4.best_score_)
+    print('***************************************************************************************')#50 0.77
+
+
+    '''SVM模型的构建和结果'''
+    SVM_list = ['linear', 'rbf']
+    C_list = [C_linear, C_rbf]  # 线性和高斯最优的参数值集合
+    for i in range(0, 2):
+        # 构建SVM模型
+        SVM_kernel = SVC(C=C_list[i], decision_function_shape='ovo', kernel=SVM_list[i], shrinking=True,
+                             probability=True,
+                             gamma='auto')
+        SVM_kernel.fit(X_train, Y_train.ravel())  # 训练SVM模型。需要一维数组时，传递列向量Y。使用ravel（）将Y的形状更改为（n_samples）。
+        # SVM_kernel结果
+        predict_SVM_kernel = SVM_kernel.predict(X_test)  # predict_SVM_kernel为预测集X_test的预测结果，Y_test为真实结果
+        print(' ', predict_SVM_kernel, 'SVM_', SVM_list[i], '预测值对比实际值\n', np.transpose(Y_test))
+        # SVM_kernel的十折交叉验证
+        score_kernel = cross_val_score(SVM_kernel,  # 使用的模型
+                                           X,  # 没被分割原来的所有输入值 X
+                                           Y.ravel(),  # 没被分割原来的所有输出值 Y
+                                           cv=10,  # 10次不同地方分割的交叉验证
+                                           scoring='accuracy'  # 查看准确率
+                                           )  # 10个准确率的数组
+        print('***************************************************************************************')
+        print('SVM_', SVM_list[i], '10-folds交叉验证：', 'C值为：', C_list[i], '\n最大值：', round(score_kernel.max(), 4), ' 最小值：',
+                            round(score_kernel.min(), 4), ' 平均值：', round(score_kernel.mean(), 4), '\n标准差：',
+                  round(score_kernel.std(), 4), ' 方差：', round(score_kernel.var(), 4))
+        # SVM_kernel的结果指标
+        print('++++SVM_', SVM_list[i], '的结果一览++++')
+        print('使用SVM_', SVM_list[i], '预测的准确率为：',
+                  accuracy_score(Y_test, predict_SVM_kernel))
+        print('使用SVM_', SVM_list[i], '预测的精确率为：',
+                  precision_score(Y_test, predict_SVM_kernel, average='macro'))
+        print('使用SVM_', SVM_list[i], '预测的召回率为：',
+                  recall_score(Y_test, predict_SVM_kernel, average='macro'))
+        print('使用SVM_', SVM_list[i], '预测的F1值为：',
+                  f1_score(Y_test, predict_SVM_kernel, average='macro'))
+        print('使用SVM_', SVM_list[i], '预测的Cohen’s Kappa系数为：',
+                  cohen_kappa_score(Y_test, predict_SVM_kernel))
+        result_svm_kernel = np.array([[accuracy_score(Y_test, predict_SVM_kernel), precision_score(Y_test, predict_SVM_kernel,average='macro'),
+        recall_score(Y_test,predict_SVM_kernel, average='macro'),
+        f1_score(Y_test, predict_SVM_kernel, average='macro'),
+        cohen_kappa_score(Y_test, predict_SVM_kernel)]])
+        '''画ROC曲线计算AUC面积'''
+        Y_one_hot = label_binarize(Y_test, classes=np.array([1, 2, 3]))
+        Y_score = SVM_kernel.predict_proba(X_test)
+        # 1、调用函数计算micro类型的AUC
+        print('调用函数auc：', metrics.roc_auc_score(Y_one_hot, Y_score, average='micro', multi_class='ovo'))
+        # 2、手动计算micro类型的AUC
+        # 首先将矩阵y_one_hot和y_score展开，然后计算假正例率FPR和真正例率TPR
+        fpr, tpr, thresholds = metrics.roc_curve(Y_one_hot.ravel(), Y_score.ravel())
+        auc = metrics.auc(fpr, tpr)
+        print('手动计算auc：', auc)
+        # 绘图
+        mpl.rcParams['font.sans-serif'] = u'SimHei'
+        mpl.rcParams['axes.unicode_minus'] = False
+        if i == 0:
+            result_svm_linear_arr = np.append(result_svm_linear_arr, result_svm_kernel, axis=0)
+            # FPR是横坐标，TPR是纵坐标
+            ax1 = plt.subplot(221)
+            ax1.plot(fpr, tpr, c='r', lw=2, alpha=0.7, label=u'AUC=%.3f' % auc)
+            ax1.plot((0, 1), (0, 1), c='#808080', lw=1, ls='--', alpha=0.7)
+            plt.xlim((-0.01, 1.02))  # x轴边界
+            plt.ylim(-0.01, 1.02)
+            plt.xticks(np.arange(0, 1.1, 0.1))  # x轴坐标点
+            plt.yticks(np.arange(0, 1.1, 0.1))
+            plt.xlabel('False Positive Rate', fontsize=13)  # x轴标题
+            plt.ylabel('True Positive Rate', fontsize=13)
+            plt.grid(b=True, ls=':')  # 图形网格
+            plt.legend(loc='lower right', fancybox=True, framealpha=0.8, fontsize=12)
+            plt.title('SVM（kernel=' + str(SVM_list[i]) + '）')#改图上面的标签
+            # ax1.show()
+        elif i == 1:
+            result_svm_rbf_arr = np.append(result_svm_rbf_arr, result_svm_kernel, axis=0)
+            # FPR是横坐标，TPR是纵坐标
+            ax2 = plt.subplot(222)
+            ax2.plot(fpr, tpr, c='r', lw=2, alpha=0.7, label=u'AUC=%.3f' % auc)
+            ax2.plot((0, 1), (0, 1), c='#808080', lw=1, ls='--', alpha=0.7)
+            plt.xlim((-0.01, 1.02))  # x轴边界
+            plt.ylim(-0.01, 1.02)
+            plt.xticks(np.arange(0, 1.1, 0.1))  # x轴坐标点
+            plt.yticks(np.arange(0, 1.1, 0.1))
+            plt.xlabel('False Positive Rate', fontsize=13)  # x轴标题
+            plt.ylabel('True Positive Rate', fontsize=13)
+            plt.grid(b=True, ls=':')  # 图形网格
+            plt.legend(loc='lower right', fancybox=True, framealpha=0.8, fontsize=12)
+            plt.title('SVM（kernel=' + str(SVM_list[i]) + '）')
+            # ax2.show()
+    print(result_svm_linear_arr)
+    print(result_svm_rbf_arr)
+    '''KNN模型的构建和结果'''
+    for i in n_knn:  # 构建不同k值的KNN模型
+        KNN_i = KNeighborsClassifier(n_neighbors=i,n_jobs = -1)
+        KNN_i.fit(X_train, Y_train.ravel())  # 训练不同k值的KNN模型
+        # KNN结果对比
+        predict_KNN_i = KNN_i.predict(X_test)  # predict_KNN_i为预测集X_test的预测结果，Y_test为真实结果
+        print(' ', predict_KNN_i, 'KNN_', i, '预测值对比实际值\n', np.transpose(Y_test))
+        # KNN的十折交叉验证
+        score_KNN_i = cross_val_score(KNN_i,  # 使用的模型
+                                      X,  # 没被分割原来的所有输入值 X
+                                      Y.ravel(),  # 没被分割原来的所有输出值 Y
+                                      cv=10,  # 10次不同地方分割的交叉验证
+                                      scoring='accuracy'  # 查看准确率
+                                      )  # 10个准确率的数组
+        print('***************************************************************************************')
+        print('KNN_', i, '10-folds交叉验证：', 'K值为：', i, '\n最大值：', round(score_KNN_i.max(), 4), ' 最小值：',
+              round(score_KNN_i.min(), 4), ' 平均值：', round(score_KNN_i.mean(), 4), '\n标准差：',
+              round(score_KNN_i.std(), 4), ' 方差：', round(score_KNN_i.var(), 4))
+        # KNN_i的结果指标
+        print('++++KNN_', i, '的结果一览++++')
+        print('使用KNN_', i, '预测的准确率为：',
+              accuracy_score(Y_test, predict_KNN_i))
+        print('使用KNN_', i, '预测的精确率为：',
+              precision_score(Y_test, predict_KNN_i, average='macro'))
+        print('使用KNN_', i, '预测的召回率为：',
+              recall_score(Y_test, predict_KNN_i, average='macro'))
+        print('使用KNN_', i, '预测的F1值为：',
+              f1_score(Y_test, predict_KNN_i, average='macro'))
+        print('使用KNN_', i, '预测的Cohen’s Kappa系数为：',
+              cohen_kappa_score(Y_test, predict_KNN_i))
+        result_knn = np.array([[accuracy_score(Y_test, predict_KNN_i), precision_score(Y_test,
+                                                                                                   predict_KNN_i,
+                                                                                                   average='macro'),
+                                       recall_score(Y_test,
+                                                    predict_KNN_i, average='macro'),
+                                       f1_score(Y_test, predict_KNN_i, average='macro'),
+                                       cohen_kappa_score(Y_test, predict_KNN_i)]])
+        result_knn_arr = np.append(result_knn_arr, result_knn, axis=0)
+        print(result_knn_arr)
+
+        '''画ROC曲线计算AUC面积'''
+        Y_one_hot = label_binarize(Y_test, classes=np.array([1, 2, 3]))
+        Y_score = KNN_i.predict_proba(X_test)
+        # 1、调用函数计算micro类型的AUC
+        print('调用函数auc：', metrics.roc_auc_score(Y_one_hot, Y_score, average='micro'))
+        # 2、手动计算micro类型的AUC
+        # 首先将矩阵y_one_hot和y_score展开，然后计算假正例率FPR和真正例率TPR
+        fpr, tpr, thresholds = metrics.roc_curve(Y_one_hot.ravel(), Y_score.ravel())
+        auc = metrics.auc(fpr, tpr)
+        print('手动计算auc：', auc)
+        # 绘图
+        mpl.rcParams['font.sans-serif'] = u'SimHei'  # 用来正常显示中文标签
+        mpl.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
+        # FPR是横坐标，TPR是纵坐标
+        ax3 = plt.subplot(223)
+        ax3.plot(fpr, tpr, c='r', lw=2, alpha=0.7, label=u'AUC=%.3f' % auc)
+        ax3.plot((0, 1), (0, 1), c='#808080', lw=1, ls='--', alpha=0.7)
+        plt.xlim((-0.01, 1.02))  # x轴边界
+        plt.ylim(-0.01, 1.02)
+        plt.xticks(np.arange(0, 1.1, 0.1))  # x轴坐标点
+        plt.yticks(np.arange(0, 1.1, 0.1))
+        plt.xlabel('False Positive Rate', fontsize=13)  # x轴标题
+        plt.ylabel('True Positive Rate', fontsize=13)
+        plt.grid(b=True, ls=':')  # 图形网格
+        plt.legend(loc='lower right', fancybox=True, framealpha=0.8, fontsize=12)
+        plt.title('KNN_' + str(i) + '')
+        # ax3.show()
+    '''随机森林模型的构建和结果'''
+    for i in n_forest:
+        Forest_i = RandomForestClassifier(n_estimators=i, random_state=0, n_jobs=-1)
+        Forest_i.fit(X_train, Y_train)
+        # Forest结果对比
+        predict_Forest_i = Forest_i.predict(X_test)  # predict_KNN_i为预测集X_test的预测结果，Y_test为真实结果
+        print(' ', predict_Forest_i, 'Forest_', i, '预测值对比实际值\n', np.transpose(Y_test))
+        # Forest的十折交叉验证
+        score_Forest_i = cross_val_score(Forest_i,  # 使用的模型
+                                         X,  # 没被分割原来的所有输入值 X
+                                         Y.ravel(),  # 没被分割原来的所有输出值 Y
+                                         cv=10,  # 10次不同地方分割的交叉验证
+                                         scoring='accuracy'  # 查看准确率
+                                         )  # 10个准确率的数组
+        print('***************************************************************************************')
+        print('Forest_', i, '10-folds交叉验证：', 'F值为：', i, '\n最大值：', round(score_Forest_i.max(), 4), ' 最小值：',
+              round(score_Forest_i.min(), 4), ' 平均值：', round(score_Forest_i.mean(), 4), '\n标准差：',
+              round(score_Forest_i.std(), 4), ' 方差：', round(score_Forest_i.var(), 4))
+        # Forest_i的结果指标
+        print('++++Forest_', i, '的结果一览++++')
+        print('使用Forest_', i, '预测的准确率为：',
+              accuracy_score(Y_test, predict_Forest_i))
+        print('使用Forest_', i, '预测的精确率为：',
+              precision_score(Y_test, predict_Forest_i, average='macro'))
+        print('使用Forest_', i, '预测的召回率为：',
+              recall_score(Y_test, predict_Forest_i, average='macro'))
+        print('使用Forest_', i, '预测的F1值为：',
+              f1_score(Y_test, predict_Forest_i, average='macro'))
+        print('使用Forest_', i, '预测的Cohen’s Kappa系数为：',
+              cohen_kappa_score(Y_test, predict_Forest_i))
+        result_forest = np.array([[accuracy_score(Y_test, predict_Forest_i), precision_score(Y_test,
+                                                                                       predict_Forest_i,
+                                                                                       average='macro'),
+                                recall_score(Y_test,
+                                             predict_Forest_i, average='macro'),
+                                f1_score(Y_test, predict_Forest_i, average='macro'),
+                                cohen_kappa_score(Y_test, predict_Forest_i)]])
+        result_forest_arr = np.append(result_forest_arr, result_forest, axis=0)
+
+        '''画ROC曲线计算AUC面积'''
+        Y_one_hot = label_binarize(Y_test, classes=np.array([1, 2, 3]))
+        Y_score = Forest_i.predict_proba(X_test)
+        # 1、调用函数计算micro类型的AUC
+        print('调用函数auc：', metrics.roc_auc_score(Y_one_hot, Y_score, average='micro'))
+        # 2、手动计算micro类型的AUC
+        # 首先将矩阵y_one_hot和y_score展开，然后计算假正例率FPR和真正例率TPR
+        fpr, tpr, thresholds = metrics.roc_curve(Y_one_hot.ravel(), Y_score.ravel())
+        auc = metrics.auc(fpr, tpr)
+        print('手动计算auc：', auc)
+        # 绘图
+        mpl.rcParams['font.sans-serif'] = u'SimHei'
+        mpl.rcParams['axes.unicode_minus'] = False
+        # FPR是横坐标，TPR是纵坐标
+        ax4 = plt.subplot(224)
+        ax4.plot(fpr, tpr, c='r', lw=2, alpha=0.7, label=u'AUC=%.3f' % auc)
+        ax4.plot((0, 1), (0, 1), c='#808080', lw=1, ls='--', alpha=0.7)
+        plt.xlim((-0.01, 1.02))  # x轴边界
+        plt.ylim(-0.01, 1.02)
+        plt.xticks(np.arange(0, 1.1, 0.1))  # x轴坐标点
+        plt.yticks(np.arange(0, 1.1, 0.1))
+        plt.xlabel('False Positive Rate', fontsize=13)  # x轴标题
+        plt.ylabel('True Positive Rate', fontsize=13)
+        plt.grid(b=True, ls=':')  # 图形网格
+        plt.legend(loc='lower right', fancybox=True, framealpha=0.8, fontsize=12)
+        plt.title('Forest_' + str(i) + '')
+        plt.tight_layout()
+        # for k in range(1, 11):
+        figure_save_path = r'D:\rawdata_preprocess\师门代码\机器学习跑10次'
+        if not os.path.exists(figure_save_path):
+            os.makedirs(figure_save_path)  # 如果不存在目录figure_save_path，则创建
+        plt.savefig(os.path.join(figure_save_path, str(w)))  # 分别命名图片
+        plt.clf()
+
+    print('----------------------------------------------------------------------------------------------------')
+    
+    writer = pd.ExcelWriter(r'D:\rawdata_preprocess\数据处理全过程\步骤3：特征值筛选\3Phases_12featuresRusults.xlsx')
+data = pd.DataFrame(result_svm_linear_arr)
+data.to_excel(writer, sheet_name="svm_linear", float_format='%.5f')
+data = pd.DataFrame(result_svm_rbf_arr)
+data.to_excel(writer, sheet_name="svm_rbf", float_format='%.5f')
+data = pd.DataFrame(result_knn_arr)
+data.to_excel(writer, sheet_name="knn", float_format='%.5f')
+data = pd.DataFrame(result_forest_arr)
+data.to_excel(writer, sheet_name="forest", float_format='%.5f')
+writer.save()
