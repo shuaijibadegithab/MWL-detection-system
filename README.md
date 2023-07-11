@@ -4,7 +4,10 @@
 #Sequential Float Feature selection and K-W test were used to found the optimal feature set.
 #This system can be considered in other drving scenario such as autonomous driving and train transportation.
 ![1689054859635](https://github.com/shuaijibadegithab/MWL-detection-system/assets/103566892/dcdb782a-5f15-44ab-95f4-d20eedaa0654)
-Please read this paper for more details. In addtion, if you are interested in any methods of this research, please cite my paper. Thank you!
+Please read this paper for more details. In addtion, if you are interested in any methods of this research, please cite my paper:
+Liu, C.; Zhang, C.; Sun, L.; Liu, K.; Liu, H.; Zhu, W.; Jiang, C. Detection of Pilot’s Mental Workload Using a Wireless EEG Headset in Airfield Traffic Pattern Tasks. Entropy 2023, 25, 1035. https://doi.org/10.3390/e25071035
+Thank you!
+
 **PSD changes of various brain regions!**
 ![image](https://github.com/shuaijibadegithab/MWL-detection-system/assets/103566892/4e8e63d6-0846-4f47-a3da-9c45792ad8aa)
 **SFFS performance!**
